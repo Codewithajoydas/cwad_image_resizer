@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
   experimental: {
     typedRoutes: true,
   },
+  images:{
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'placehold.co',
+      }
+    ]
+  }
 };
 
 export default nextConfig;

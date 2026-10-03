@@ -1,0 +1,33 @@
+{
+  "name": "@cwad/next-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf .next coverage"
+  },
+  "dependencies": {
+    "@cwad/types": "*",
+    "@cwad/ui": "*",
+    "@cwad/utils": "*",
+    "@cwad/validation": "*",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "eslint": "^9.36.0",
+    "eslint-config-next": "16.3.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

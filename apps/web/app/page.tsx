@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
@@ -22,6 +22,15 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type ImageFormat = "png" | "jpeg" | "webp" | "avif";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -39,9 +48,17 @@ export default function Home() {
   const [quality, setQuality] = useState(80);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
 
+  // Output format
+  const [format, setFormat] = useState<ImageFormat>("webp");
+
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -51,17 +68,27 @@ export default function Home() {
     };
   }, [previewUrl]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-
-    if (!selectedFile) return;
-
+  /**
+   * Handle selected image
+   */
+  const handleFile = (selectedFile: File) => {
     setError("");
 
-    // Basic validation
+    // Validate image
     if (!selectedFile.type.startsWith("image/")) {
       setError("Please select a valid image file.");
       return;
+    }
+
+    // Optional: prevent very large files
+    if (selectedFile.size > 20 * 1024 * 1024) {
+      setError("Image size must be less than 20MB.");
+      return;
+    }
+
+    // Revoke previous preview URL
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
 
     setFile(selectedFile);
@@ -87,8 +114,6 @@ export default function Home() {
       // Use original dimensions as defaults
       setWidth(imageWidth.toString());
       setHeight(imageHeight.toString());
-
-      image.onload = null;
     };
 
     image.onerror = () => {
@@ -98,6 +123,59 @@ export default function Home() {
     image.src = objectUrl;
   };
 
+  /**
+   * File input
+   */
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+
+    if (!selectedFile) return;
+
+    handleFile(selectedFile);
+
+    // Allow selecting the same file again
+    event.target.value = "";
+  };
+
+  /**
+   * Drag over
+   */
+  const handleDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    setIsDragging(true);
+  };
+
+  /**
+   * Drag leave
+   */
+  const handleDragLeave = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    setIsDragging(false);
+  };
+
+  /**
+   * Drop
+   */
+  const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    setIsDragging(false);
+
+    const droppedFile = event.dataTransfer.files?.[0];
+
+    if (!droppedFile) return;
+
+    handleFile(droppedFile);
+  };
+
+  /**
+   * Width change
+   */
   const handleWidthChange = (value: string) => {
     setWidth(value);
 
@@ -118,6 +196,9 @@ export default function Home() {
     setHeight(newHeight.toString());
   };
 
+  /**
+   * Height change
+   */
   const handleHeightChange = (value: string) => {
     setHeight(value);
 
@@ -138,6 +219,9 @@ export default function Home() {
     setWidth(newWidth.toString());
   };
 
+  /**
+   * Generate image
+   */
   const handleGenerateImage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -170,6 +254,9 @@ export default function Home() {
       formData.append("height", heightNumber.toString());
       formData.append("quality", quality.toString());
 
+      // Send output format to backend
+      formData.append("format", format);
+
       const response = await fetch("/api/generate-image", {
         method: "POST",
         body: formData,
@@ -196,6 +283,9 @@ export default function Home() {
     }
   };
 
+  /**
+   * Copy share URL
+   */
   const handleCopy = async () => {
     if (!shareUrl) return;
 
@@ -212,7 +302,14 @@ export default function Home() {
     }
   };
 
+  /**
+   * Reset
+   */
   const handleReset = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
     setFile(null);
     setPreviewUrl(null);
     setGeneratedUrl(null);
@@ -225,7 +322,10 @@ export default function Home() {
     setOriginalHeight(0);
 
     setQuality(80);
+    setFormat("webp");
+
     setError("");
+    setIsDragging(false);
   };
 
   return (
@@ -240,19 +340,35 @@ export default function Home() {
 
           <label
             htmlFor="image"
-            className="flex min-h-[320px] w-full cursor-pointer flex-col items-center justify-center gap-5 border border-dashed border-muted-foreground/30 p-6 transition-colors hover:bg-muted/50"
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={[
+              "flex min-h-[320px] w-full cursor-pointer flex-col items-center justify-center gap-5 border border-dashed p-6 transition-colors",
+              isDragging
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/30 hover:bg-muted/50",
+            ].join(" ")}
           >
             <div className="flex size-16 items-center justify-center border bg-background">
               {previewUrl ? (
                 <img src={previewUrl} alt="Selected image" className="size-16 object-cover" />
               ) : (
-                <UploadCloud size={36} className="text-muted-foreground" />
+                <UploadCloud
+                  size={36}
+                  className={isDragging ? "text-primary" : "text-muted-foreground"}
+                />
               )}
             </div>
 
             <div>
               <p className="text-center font-medium">
-                {previewUrl ? "Image selected" : "Upload an image"}
+                {isDragging
+                  ? "Drop your image here"
+                  : previewUrl
+                    ? "Image selected"
+                    : "Upload an image"}
               </p>
 
               <p className="mt-1 text-center text-sm text-muted-foreground">
@@ -263,6 +379,7 @@ export default function Home() {
             </div>
 
             <input
+              ref={fileInputRef}
               id="image"
               name="image"
               type="file"
@@ -306,6 +423,28 @@ export default function Home() {
                 />
               </Field>
             </div>
+
+            {/* Output format */}
+
+            <Field>
+              <FieldLabel htmlFor="image-format">Output format</FieldLabel>
+
+              <Select
+                value={format}
+                onValueChange={(value) => setFormat(value as ImageFormat)}
+                disabled={!file || loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="webp">WebP</SelectItem>
+                  <SelectItem value="jpeg">JPEG</SelectItem>
+                  <SelectItem value="png">PNG</SelectItem>
+                  <SelectItem value="avif">AVIF</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
 
             {/* Aspect ratio */}
 
@@ -412,7 +551,7 @@ export default function Home() {
 
           {generatedUrl && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Generated at {width} × {height}px · Quality {quality}%
+              Generated at {width} × {height}px · Quality {quality}% · Format {format.toUpperCase()}
             </p>
           )}
 
@@ -422,10 +561,14 @@ export default function Home() {
             <a
               href={generatedUrl}
               download
-              className="mt-4 flex h-9 w-full items-center justify-center gap-2 bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="flex items-center gap-2"
+              aria-label="Download generated image"
+              target="_blank"
             >
-              <ArrowDownToLine size={18} />
-              Download Generated Image
+              <Button className="mt-4 w-full">
+                <ArrowDownToLine size={18} />
+                Download Generated Image
+              </Button>
             </a>
           ) : (
             <Button className="mt-4 w-full" disabled>

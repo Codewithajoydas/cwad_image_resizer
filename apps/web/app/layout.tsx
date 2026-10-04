@@ -3,10 +3,12 @@ import "./globals.css";
 import { Noto_Sans, Playfair_Display } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toast";
+import { Header } from "@/components/layout/AppHeader";
+import { AppHeaderProvider } from "@/store/components/AppHeader";
 
-const playfairDisplayHeading = Playfair_Display({subsets:['latin'],variable:'--font-heading'});
+const playfairDisplayHeading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
 
-const notoSans = Noto_Sans({subsets:['latin'],variable:'--font-sans'});
+const notoSans = Noto_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: {
@@ -21,12 +23,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
   return (
     <html lang="en" className={cn("font-sans", notoSans.variable, playfairDisplayHeading.variable)}>
-      <body>
-        {children}
-        <Toaster/>
-      </body>
+      <AppHeaderProvider>
+        <body>
+          <Header />
+          {children}
+          <Toaster />
+        </body>
+      </AppHeaderProvider>
     </html>
   );
 }

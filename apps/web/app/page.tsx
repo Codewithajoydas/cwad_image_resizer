@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+
+import { useContext, useEffect, useRef, useState } from "react";
+
 import {
   ArrowDownToLine,
   Check,
@@ -11,6 +13,7 @@ import {
   LockOpen,
   UploadCloud,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -37,8 +40,11 @@ import {
 import { ImageFormat } from "@/types/imageFormats.type";
 import { toast } from "@/components/ui/toast";
 import { Switch } from "@/components/ui/switch";
+import { AppHeaderContext } from "@/store/components/AppHeader";
 
 export default function Home() {
+  const { setRemaining } = useContext(AppHeaderContext);
+
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
@@ -57,11 +63,14 @@ export default function Home() {
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [generateLink, setGenerateLink] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
     };
   }, [previewUrl]);
 
@@ -75,6 +84,7 @@ export default function Home() {
 
   const handleFile = (selectedFile: File) => {
     setError("");
+
     if (!selectedFile.type.startsWith("image/")) {
       toast.add({
         type: "warning",
@@ -83,6 +93,7 @@ export default function Home() {
       });
       return;
     }
+
     if (selectedFile.size > 20 * 1024 * 1024) {
       toast.add({
         type: "warning",
@@ -91,84 +102,144 @@ export default function Home() {
       });
       return;
     }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
     if (generatedUrl?.startsWith("blob:")) {
       URL.revokeObjectURL(generatedUrl);
     }
+
     setFile(selectedFile);
+
     const objectUrl = URL.createObjectURL(selectedFile);
+
     setPreviewUrl(objectUrl);
     setGeneratedUrl(null);
     setShareUrl("");
     setProgress(0);
     setProgressMessage("");
+
     const image = new window.Image();
+
     image.onload = () => {
       const imageWidth = image.naturalWidth;
       const imageHeight = image.naturalHeight;
+
       setOriginalWidth(imageWidth);
       setOriginalHeight(imageHeight);
       setWidth(imageWidth.toString());
       setHeight(imageHeight.toString());
     };
+
     image.onerror = () => {
       toast.add({
         type: "error",
         title: "Error loading image",
-        description: "There was an error loading the image. Please try again.",
+        description:
+          "There was an error loading the image. Please try again.",
       });
     };
+
     image.src = objectUrl;
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const selectedFile = event.target.files?.[0];
+
     if (!selectedFile) return;
+
     handleFile(selectedFile);
     event.target.value = "";
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragOver = (
+    event: React.DragEvent<HTMLLabelElement>,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (event: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragLeave = (
+    event: React.DragEvent<HTMLLabelElement>,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+  const handleDrop = (
+    event: React.DragEvent<HTMLLabelElement>,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
+
     setIsDragging(false);
+
     const droppedFile = event.dataTransfer.files?.[0];
+
     if (!droppedFile) return;
+
     handleFile(droppedFile);
   };
 
   const handleWidthChange = (value: string) => {
     setWidth(value);
-    if (!lockAspectRatio || !originalWidth || !originalHeight) return;
+
+    if (
+      !lockAspectRatio ||
+      !originalWidth ||
+      !originalHeight
+    ) {
+      return;
+    }
+
     const newWidth = Number(value);
-    if (!Number.isFinite(newWidth) || newWidth <= 0) return;
+
+    if (!Number.isFinite(newWidth) || newWidth <= 0) {
+      return;
+    }
+
     const aspectRatio = originalHeight / originalWidth;
-    setHeight(Math.round(newWidth * aspectRatio).toString());
+
+    setHeight(
+      Math.round(newWidth * aspectRatio).toString(),
+    );
   };
 
   const handleHeightChange = (value: string) => {
     setHeight(value);
-    if (!lockAspectRatio || !originalWidth || !originalHeight) return;
+
+    if (
+      !lockAspectRatio ||
+      !originalWidth ||
+      !originalHeight
+    ) {
+      return;
+    }
+
     const newHeight = Number(value);
-    if (!Number.isFinite(newHeight) || newHeight <= 0) return;
+
+    if (!Number.isFinite(newHeight) || newHeight <= 0) {
+      return;
+    }
+
     const aspectRatio = originalWidth / originalHeight;
-    setWidth(Math.round(newHeight * aspectRatio).toString());
+
+    setWidth(
+      Math.round(newHeight * aspectRatio).toString(),
+    );
   };
 
-  const handleGenerateImage = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleGenerateImage = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
+
     if (!file) {
       toast.add({
         type: "warning",
@@ -177,9 +248,11 @@ export default function Home() {
       });
       return;
     }
+
     const widthNumber = Number(width);
     const heightNumber = Number(height);
-    if (!widthNumber || widthNumber < 1) {
+
+    if (!Number.isFinite(widthNumber) || widthNumber < 1) {
       toast.add({
         title: "Invalid width",
         type: "warning",
@@ -187,7 +260,11 @@ export default function Home() {
       });
       return;
     }
-    if (!heightNumber || heightNumber < 1) {
+
+    if (
+      !Number.isFinite(heightNumber) ||
+      heightNumber < 1
+    ) {
       toast.add({
         title: "Invalid height",
         type: "warning",
@@ -195,23 +272,32 @@ export default function Home() {
       });
       return;
     }
+
     try {
       setLoading(true);
       setError("");
       setProgress(0);
       setProgressMessage("Preparing image...");
+
       if (generatedUrl?.startsWith("blob:")) {
         URL.revokeObjectURL(generatedUrl);
       }
+
       setGeneratedUrl(null);
       setShareUrl("");
+
       const formData = new FormData();
+
       formData.append("image", file);
       formData.append("width", widthNumber.toString());
       formData.append("height", heightNumber.toString());
       formData.append("quality", quality.toString());
-      formData.append("generateLink", generateLink.toString());
+      formData.append(
+        "generateLink",
+        generateLink.toString(),
+      );
       formData.append("format", format);
+
       const result = await new Promise<{
         blob: Blob;
         cloudinaryData: {
@@ -226,85 +312,223 @@ export default function Home() {
         } | null;
       }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+
         xhr.upload.onprogress = (event) => {
           if (!event.lengthComputable) return;
-          const uploadProgress = Math.round((event.loaded / event.total) * 90);
+
+          const uploadProgress = Math.round(
+            (event.loaded / event.total) * 90,
+          );
+
           setProgress(uploadProgress);
-          setProgressMessage(`Uploading image... ${uploadProgress}%`);
+          setProgressMessage(
+            `Uploading image... ${uploadProgress}%`,
+          );
         };
+
         xhr.upload.onload = () => {
           setProgress(90);
+
           setProgressMessage(
             generateLink
               ? "Processing image and uploading to Cloudinary..."
               : "Processing image...",
           );
         };
-        xhr.onload = () => {
-          if (xhr.status < 200 || xhr.status >= 300) {
-            try {
-              const errorData = JSON.parse(xhr.responseText);
-              reject(new Error(errorData.error || "Failed to generate image."));
-            } catch {
-              reject(new Error("Failed to generate image."));
+
+        xhr.onload = async () => {
+          const remainingHeader =
+            xhr.getResponseHeader("X-RateLimit-Remaining");
+          const resetHeader =
+            xhr.getResponseHeader("X-RateLimit-Reset");
+
+          if (remainingHeader !== null) {
+            const remaining = Number(remainingHeader);
+            const resetAt =
+              resetHeader === null ? undefined : Number(resetHeader);
+
+            if (
+              Number.isInteger(remaining) &&
+              remaining >= 0 &&
+              (resetAt === undefined || Number.isFinite(resetAt))
+            ) {
+              setRemaining(remaining, resetAt);
             }
+          }
+
+          /*
+           * Rate limit
+           */
+          if (xhr.status === 429) {
+            toast.add({
+              type: "error",
+              title: "Limit exceeded",
+              description:
+                "You have exceeded the rate limit. Please try again later.",
+            });
+
+            reject(
+              new Error(
+                "Rate limit exceeded. Please try again later.",
+              ),
+            );
+
             return;
           }
-          const responseType = xhr.getResponseHeader("Content-Type") || "";
-          if (responseType.includes("application/json")) {
+
+          /*
+           * Other HTTP errors
+           */
+          if (xhr.status < 200 || xhr.status >= 300) {
+            let message =
+              "Failed to generate image.";
+
             try {
-              const data = JSON.parse(xhr.responseText);
+              const responseText =
+                await xhr.response.text();
+
+              if (responseText) {
+                const errorData =
+                  JSON.parse(responseText);
+
+                message =
+                  errorData.message ||
+                  errorData.error ||
+                  message;
+              }
+            } catch {
+              // Keep default error message.
+            }
+
+            reject(new Error(message));
+            return;
+          }
+
+          /*
+           * Response type
+           */
+          const responseType =
+            xhr.getResponseHeader(
+              "Content-Type",
+            ) || "";
+
+          /*
+           * Cloudinary JSON response
+           */
+          if (
+            responseType.includes(
+              "application/json",
+            )
+          ) {
+            try {
+              const responseText =
+                await xhr.response.text();
+
+              const data = JSON.parse(responseText);
+
               resolve({
                 blob: new Blob(),
                 cloudinaryData: data,
               });
             } catch {
-              reject(new Error("Invalid server response."));
+              reject(
+                new Error(
+                  "Invalid server response.",
+                ),
+              );
             }
+
             return;
           }
+
+          /*
+           * Image response
+           */
           const blob = xhr.response;
+
+          if (!(blob instanceof Blob)) {
+            reject(
+              new Error(
+                "Invalid image response.",
+              ),
+            );
+
+            return;
+          }
+
           resolve({
             blob,
             cloudinaryData: null,
           });
         };
-        xhr.onerror = () => reject(new Error("Network error occurred."));
-        xhr.onabort = () => reject(new Error("Request was cancelled."));
+
+        xhr.onerror = () => {
+          reject(
+            new Error(
+              "Network error occurred.",
+            ),
+          );
+        };
+
+        xhr.onabort = () => {
+          reject(
+            new Error(
+              "Request was cancelled.",
+            ),
+          );
+        };
+
         xhr.responseType = "blob";
-        xhr.open("POST", "/api/generate-image");
+        xhr.open(
+          "POST",
+          "/api/generate-image",
+        );
         xhr.send(formData);
       });
+
       setProgress(100);
       setProgressMessage("Completed");
+
       if (result.cloudinaryData) {
         const data = result.cloudinaryData;
+
         setShareUrl(data.url || "");
         setGeneratedUrl(data.url || null);
+
         toast.add({
           type: "success",
           title: "Image generated successfully",
-          description: "Your image has been generated and uploaded.",
+          description:
+            "Your image has been generated and uploaded.",
         });
       } else {
-        const objectUrl = URL.createObjectURL(result.blob);
+        const objectUrl = URL.createObjectURL(
+          result.blob,
+        );
+
         setGeneratedUrl(objectUrl);
+
         toast.add({
           type: "success",
           title: "Image generated successfully",
-          description: "Your image is ready to download.",
+          description:
+            "Your image is ready to download.",
         });
       }
     } catch (error) {
       console.error(error);
-      setError(
-        error instanceof Error ? error.message : "Something went wrong.",
-      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
+      setError(message);
+
       toast.add({
         type: "error",
         title: "Error generating image",
-        description:
-          error instanceof Error ? error.message : "Something went wrong.",
+        description: message,
       });
     } finally {
       setLoading(false);
@@ -313,35 +537,49 @@ export default function Home() {
 
   const handleCopy = async () => {
     if (!shareUrl) return;
+
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(
+        shareUrl,
+      );
+
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
     } catch {
       toast.add({
         type: "error",
         title: "Error copying URL",
-        description: "Could not copy the URL to clipboard.",
+        description:
+          "Could not copy the URL to clipboard.",
       });
     }
   };
 
   const handleDownload = () => {
     if (!generatedUrl) return;
+
     const link = document.createElement("a");
+
     link.href = generatedUrl;
     link.download = `resized.${format}`;
-    link.target = "_blank";
+
     document.body.appendChild(link);
     link.click();
     link.remove();
   };
 
   const handleReset = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
     if (generatedUrl?.startsWith("blob:")) {
       URL.revokeObjectURL(generatedUrl);
     }
+
     setFile(null);
     setPreviewUrl(null);
     setGeneratedUrl(null);
@@ -397,6 +635,7 @@ export default function Home() {
                 />
               )}
             </div>
+
             <div>
               <p className="text-center font-medium">
                 {isDragging
@@ -405,12 +644,14 @@ export default function Home() {
                     ? "Image selected"
                     : "Upload an image"}
               </p>
+
               <p className="mt-1 text-center text-sm text-muted-foreground">
                 {previewUrl
                   ? `${originalWidth} × ${originalHeight}px`
                   : "Drag and drop or click to upload"}
               </p>
             </div>
+
             <input
               ref={fileInputRef}
               id="image"
@@ -421,10 +662,14 @@ export default function Home() {
               onChange={handleFileChange}
             />
           </label>
+
           <FieldGroup className="mt-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor="image-width">Width</FieldLabel>
+                <FieldLabel htmlFor="image-width">
+                  Width
+                </FieldLabel>
+
                 <Input
                   id="image-width"
                   name="width"
@@ -432,14 +677,20 @@ export default function Home() {
                   min={1}
                   value={width}
                   onChange={(event) =>
-                    handleWidthChange(event.target.value)
+                    handleWidthChange(
+                      event.target.value,
+                    )
                   }
                   placeholder="Width"
                   disabled={!file || loading}
                 />
               </Field>
+
               <Field>
-                <FieldLabel htmlFor="image-height">Height</FieldLabel>
+                <FieldLabel htmlFor="image-height">
+                  Height
+                </FieldLabel>
+
                 <Input
                   id="image-height"
                   name="height"
@@ -447,15 +698,21 @@ export default function Home() {
                   min={1}
                   value={height}
                   onChange={(event) =>
-                    handleHeightChange(event.target.value)
+                    handleHeightChange(
+                      event.target.value,
+                    )
                   }
                   placeholder="Height"
                   disabled={!file || loading}
                 />
               </Field>
             </div>
+
             <Field>
-              <FieldLabel htmlFor="image-format">Output format</FieldLabel>
+              <FieldLabel htmlFor="image-format">
+                Output format
+              </FieldLabel>
+
               <Select
                 value={format}
                 onValueChange={(value) =>
@@ -466,24 +723,40 @@ export default function Home() {
                 <SelectTrigger>
                   <SelectValue placeholder="Select format" />
                 </SelectTrigger>
+
                 <SelectContent>
-                  <SelectItem value="webp">WebP</SelectItem>
-                  <SelectItem value="jpeg">JPEG</SelectItem>
-                  <SelectItem value="png">PNG</SelectItem>
-                  <SelectItem value="avif">AVIF</SelectItem>
+                  <SelectItem value="webp">
+                    WebP
+                  </SelectItem>
+                  <SelectItem value="jpeg">
+                    JPEG
+                  </SelectItem>
+                  <SelectItem value="png">
+                    PNG
+                  </SelectItem>
+                  <SelectItem value="avif">
+                    AVIF
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            <Field orientation="horizontal" className="max-w-sm">
+
+            <Field
+              orientation="horizontal"
+              className="max-w-sm"
+            >
               <FieldContent>
                 <FieldLabel htmlFor="switch-focus-mode">
                   Generate link
                 </FieldLabel>
+
                 <FieldDescription>
-                  This link will be generated and uploaded to Cloudinary,
-                  allowing you to share it with others.
+                  This link will be generated and uploaded
+                  to Cloudinary, allowing you to share it
+                  with others.
                 </FieldDescription>
               </FieldContent>
+
               <Switch
                 id="switch-focus-mode"
                 checked={generateLink}
@@ -491,21 +764,26 @@ export default function Home() {
                 disabled={loading}
               />
             </Field>
+
             <div className="flex items-center justify-between border-y py-3">
               <div>
                 <p className="text-sm font-medium">
                   Lock aspect ratio
                 </p>
+
                 <p className="text-xs text-muted-foreground">
                   Keep the original image proportions
                 </p>
               </div>
+
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 onClick={() =>
-                  setLockAspectRatio((value) => !value)
+                  setLockAspectRatio(
+                    (value) => !value,
+                  )
                 }
                 disabled={loading}
                 aria-label={
@@ -521,15 +799,18 @@ export default function Home() {
                 )}
               </Button>
             </div>
+
             <Field>
               <div className="flex items-center justify-between">
                 <FieldLabel htmlFor="image-quality">
                   Image quality
                 </FieldLabel>
+
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {quality}%
                 </span>
               </div>
+
               <Slider
                 id="image-quality"
                 min={1}
@@ -541,12 +822,16 @@ export default function Home() {
                   const nextValue = Array.isArray(value)
                     ? value[0]
                     : value;
-                  if (typeof nextValue === "number") {
+
+                  if (
+                    typeof nextValue === "number"
+                  ) {
                     setQuality(nextValue);
                   }
                 }}
               />
             </Field>
+
             {loading && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -557,23 +842,29 @@ export default function Home() {
                     />
                     {progressMessage}
                   </span>
+
                   <span className="tabular-nums">
                     {progress}%
                   </span>
                 </div>
+
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-primary transition-all duration-300"
-                    style={{ width: `${progress}%` }}
+                    style={{
+                      width: `${progress}%`,
+                    }}
                   />
                 </div>
               </div>
             )}
+
             {error && (
               <p className="text-sm text-destructive">
                 {error}
               </p>
             )}
+
             <div className="flex gap-2">
               <Button
                 type="submit"
@@ -592,6 +883,7 @@ export default function Home() {
                   "Generate image"
                 )}
               </Button>
+
               {file && (
                 <Button
                   type="button"
@@ -606,13 +898,16 @@ export default function Home() {
           </FieldGroup>
         </form>
       </section>
+
       <section className="flex-1 px-5 py-8">
         <div className="mx-auto flex w-full max-w-xl flex-col">
           <h3 className="flex items-center gap-2 font-medium">
             <Eye size={18} />
             Preview
           </h3>
+
           <div className="my-3 h-px w-full bg-border" />
+
           <div className="flex min-h-[320px] items-center justify-center border bg-muted/20 p-4">
             {generatedUrl ? (
               <img
@@ -632,12 +927,14 @@ export default function Home() {
               </p>
             )}
           </div>
+
           {generatedUrl && (
             <p className="mt-2 text-xs text-muted-foreground">
               Generated at {width} × {height}px · Quality{" "}
               {quality}% · Format {format.toUpperCase()}
             </p>
           )}
+
           {generatedUrl ? (
             <Button
               type="button"
@@ -657,20 +954,24 @@ export default function Home() {
               Download Generated Image
             </Button>
           )}
+
           {generateLink && (
             <>
               <div className="my-6 h-px w-full bg-border" />
+
               <div>
                 <h3 className="mb-3 flex items-center gap-2 font-medium">
                   <LinkIcon size={18} />
                   Share Link
                 </h3>
+
                 <InputGroup>
                   <InputGroupInput
                     value={shareUrl}
                     placeholder="Generated image URL"
                     readOnly
                   />
+
                   <InputGroupAddon align="inline-end">
                     <InputGroupButton
                       type="button"

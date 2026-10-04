@@ -1,6 +1,8 @@
 import { cloudinaryConfig } from "@/config/cloudinary";
-import { generateImage } from "@/lib/generateImage";
-import { uploadImage } from "@/lib/UploadImage";
+import { generateImage } from "@/lib/generate-image";
+import { ratelimit } from "@/lib/rate-limit";
+import { uploadImage } from "@/lib/upload-image";
+import { DAILY_IMAGE_LIMIT } from "@/config/rate-limit";
 import { ImageFormat } from "@/types/imageFormats.type";
 import { imageResizeSchema } from "@/validators/imageResizeSchema.validate";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,7 +11,34 @@ import sharp from "sharp";
 cloudinaryConfig();
 
 export async function POST(request: NextRequest) {
+  let rateLimitHeaders: Record<string, string> = {};
+
   try {
+    const forwardedFor = request.headers.get("x-forwarded-for") ?? "unknown";
+
+    const ip = forwardedFor ? forwardedFor.split(",")[0]?.trim() || "unknown" : "unknown";
+    const { success, remaining, reset } = await ratelimit.limit(ip);
+    rateLimitHeaders = {
+      "X-RateLimit-Limit": DAILY_IMAGE_LIMIT.toString(),
+      "X-RateLimit-Remaining": remaining.toString(),
+      "X-RateLimit-Reset": reset.toString(),
+    };
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Rate limit exceeded. Please try again later.",
+          remaining,
+          reset,
+        },
+        {
+          status: 429,
+          headers: rateLimitHeaders,
+        },
+      );
+    }
+
     const formData = await request.formData();
 
     const imageFile = formData.get("image");
@@ -19,10 +48,7 @@ export async function POST(request: NextRequest) {
     const quality = Number(formData.get("quality"));
 
     const formatValue = formData.get("format");
-    const format =
-      typeof formatValue === "string"
-        ? formatValue.toLowerCase()
-        : "webp";
+    const format = typeof formatValue === "string" ? formatValue.toLowerCase() : "webp";
 
     // FormData always gives strings
     const generateLink = formData.get("generateLink") === "true";
@@ -53,6 +79,7 @@ export async function POST(request: NextRequest) {
         },
         {
           status: 400,
+          headers: rateLimitHeaders,
         },
       );
     }
@@ -64,13 +91,7 @@ export async function POST(request: NextRequest) {
     const inputBuffer = Buffer.from(arrayBuffer);
 
     // Generate resized/converted image
-    const outputBuffer = await generateImage(
-      inputBuffer,
-      width,
-      height,
-      quality,
-      outputFormat,
-    );
+    const outputBuffer = await generateImage(inputBuffer, width, height, quality, outputFormat);
 
     // Get original image metadata
     const originalMetadata = await sharp(inputBuffer).metadata();
@@ -78,35 +99,34 @@ export async function POST(request: NextRequest) {
     // Get generated image metadata
     const outputMetadata = await sharp(outputBuffer).metadata();
 
- 
     if (generateLink) {
-      const uploadResult = await uploadImage(
-        outputBuffer,
-        outputFormat,
+      const uploadResult = await uploadImage(outputBuffer, outputFormat);
+
+      return NextResponse.json(
+        {
+          success: true,
+
+          url: uploadResult.secure_url,
+
+          image: {
+            width: uploadResult.width,
+            height: uploadResult.height,
+            format: uploadResult.format,
+            size: uploadResult.bytes,
+          },
+
+          original: {
+            width: originalMetadata.width,
+            height: originalMetadata.height,
+            format: originalMetadata.format,
+            size: (imageFile as File).size,
+          },
+        },
+        {
+          headers: rateLimitHeaders,
+        },
       );
-
-      return NextResponse.json({
-        success: true,
-
-        url: uploadResult.secure_url,
-
-        image: {
-          width: uploadResult.width,
-          height: uploadResult.height,
-          format: uploadResult.format,
-          size: uploadResult.bytes,
-        },
-
-        original: {
-          width: originalMetadata.width,
-          height: originalMetadata.height,
-          format: originalMetadata.format,
-          size: (imageFile as File).size,
-        },
-      });
     }
-
- 
 
     const contentType = `image/${outputFormat}`;
 
@@ -114,6 +134,7 @@ export async function POST(request: NextRequest) {
       status: 200,
 
       headers: {
+        ...rateLimitHeaders,
         "Content-Type": contentType,
 
         "Content-Disposition": `attachment; filename="resized.${outputFormat}`,
@@ -135,6 +156,7 @@ export async function POST(request: NextRequest) {
       },
       {
         status: 500,
+        headers: rateLimitHeaders,
       },
     );
   }

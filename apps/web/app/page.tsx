@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
@@ -7,13 +6,19 @@ import {
   Copy,
   Eye,
   Link as LinkIcon,
+  Loader2,
   Lock,
   LockOpen,
   UploadCloud,
 } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -29,315 +34,338 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type ImageFormat = "png" | "jpeg" | "webp" | "avif";
+import { ImageFormat } from "@/types/imageFormats.type";
+import { toast } from "@/components/ui/toast";
+import { Switch } from "@/components/ui/switch";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
-
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState("");
-
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
-
   const [originalWidth, setOriginalWidth] = useState(0);
   const [originalHeight, setOriginalHeight] = useState(0);
-
   const [quality, setQuality] = useState(80);
   const [lockAspectRatio, setLockAspectRatio] = useState(true);
-
-  // Output format
   const [format, setFormat] = useState<ImageFormat>("webp");
-
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-
-  // Drag state
   const [isDragging, setIsDragging] = useState(false);
-
+  const [generateLink, setGenerateLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
-  /**
-   * Handle selected image
-   */
+  useEffect(() => {
+    return () => {
+      if (generatedUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(generatedUrl);
+      }
+    };
+  }, [generatedUrl]);
+
   const handleFile = (selectedFile: File) => {
     setError("");
-
-    // Validate image
     if (!selectedFile.type.startsWith("image/")) {
-      setError("Please select a valid image file.");
+      toast.add({
+        type: "warning",
+        title: "Invalid file type",
+        description: "Please select a valid image file.",
+      });
       return;
     }
-
-    // Optional: prevent very large files
     if (selectedFile.size > 20 * 1024 * 1024) {
-      setError("Image size must be less than 20MB.");
+      toast.add({
+        type: "warning",
+        title: "File too large",
+        description: "Please select an image smaller than 20MB.",
+      });
       return;
     }
-
-    // Revoke previous preview URL
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (generatedUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(generatedUrl);
     }
-
     setFile(selectedFile);
-
-    // Create preview
     const objectUrl = URL.createObjectURL(selectedFile);
     setPreviewUrl(objectUrl);
-
-    // Clear old generated image
     setGeneratedUrl(null);
     setShareUrl("");
-
-    // Read original dimensions
+    setProgress(0);
+    setProgressMessage("");
     const image = new window.Image();
-
     image.onload = () => {
       const imageWidth = image.naturalWidth;
       const imageHeight = image.naturalHeight;
-
       setOriginalWidth(imageWidth);
       setOriginalHeight(imageHeight);
-
-      // Use original dimensions as defaults
       setWidth(imageWidth.toString());
       setHeight(imageHeight.toString());
     };
-
     image.onerror = () => {
-      setError("Could not read the image dimensions.");
+      toast.add({
+        type: "error",
+        title: "Error loading image",
+        description: "There was an error loading the image. Please try again.",
+      });
     };
-
     image.src = objectUrl;
   };
 
-  /**
-   * File input
-   */
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-
     if (!selectedFile) return;
-
     handleFile(selectedFile);
-
-    // Allow selecting the same file again
     event.target.value = "";
   };
 
-  /**
-   * Drag over
-   */
   const handleDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
-
     setIsDragging(true);
   };
 
-  /**
-   * Drag leave
-   */
   const handleDragLeave = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
-
     setIsDragging(false);
   };
 
-  /**
-   * Drop
-   */
   const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     event.stopPropagation();
-
     setIsDragging(false);
-
     const droppedFile = event.dataTransfer.files?.[0];
-
     if (!droppedFile) return;
-
     handleFile(droppedFile);
   };
 
-  /**
-   * Width change
-   */
   const handleWidthChange = (value: string) => {
     setWidth(value);
-
-    if (!lockAspectRatio || !originalWidth || !originalHeight) {
-      return;
-    }
-
+    if (!lockAspectRatio || !originalWidth || !originalHeight) return;
     const newWidth = Number(value);
-
-    if (!Number.isFinite(newWidth) || newWidth <= 0) {
-      return;
-    }
-
+    if (!Number.isFinite(newWidth) || newWidth <= 0) return;
     const aspectRatio = originalHeight / originalWidth;
-
-    const newHeight = Math.round(newWidth * aspectRatio);
-
-    setHeight(newHeight.toString());
+    setHeight(Math.round(newWidth * aspectRatio).toString());
   };
 
-  /**
-   * Height change
-   */
   const handleHeightChange = (value: string) => {
     setHeight(value);
-
-    if (!lockAspectRatio || !originalWidth || !originalHeight) {
-      return;
-    }
-
+    if (!lockAspectRatio || !originalWidth || !originalHeight) return;
     const newHeight = Number(value);
-
-    if (!Number.isFinite(newHeight) || newHeight <= 0) {
-      return;
-    }
-
+    if (!Number.isFinite(newHeight) || newHeight <= 0) return;
     const aspectRatio = originalWidth / originalHeight;
-
-    const newWidth = Math.round(newHeight * aspectRatio);
-
-    setWidth(newWidth.toString());
+    setWidth(Math.round(newHeight * aspectRatio).toString());
   };
 
-  /**
-   * Generate image
-   */
   const handleGenerateImage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     if (!file) {
-      setError("Please select an image.");
+      toast.add({
+        type: "warning",
+        title: "No image selected",
+        description: "Please select an image to generate.",
+      });
       return;
     }
-
     const widthNumber = Number(width);
     const heightNumber = Number(height);
-
     if (!widthNumber || widthNumber < 1) {
-      setError("Please enter a valid width.");
+      toast.add({
+        title: "Invalid width",
+        type: "warning",
+        description: "Please enter a valid width.",
+      });
       return;
     }
-
     if (!heightNumber || heightNumber < 1) {
-      setError("Please enter a valid height.");
+      toast.add({
+        title: "Invalid height",
+        type: "warning",
+        description: "Please enter a valid height.",
+      });
       return;
     }
-
     try {
       setLoading(true);
       setError("");
-
+      setProgress(0);
+      setProgressMessage("Preparing image...");
+      if (generatedUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(generatedUrl);
+      }
+      setGeneratedUrl(null);
+      setShareUrl("");
       const formData = new FormData();
-
       formData.append("image", file);
       formData.append("width", widthNumber.toString());
       formData.append("height", heightNumber.toString());
       formData.append("quality", quality.toString());
-
-      // Send output format to backend
+      formData.append("generateLink", generateLink.toString());
       formData.append("format", format);
-
-      const response = await fetch("/api/generate-image", {
-        method: "POST",
-        body: formData,
+      const result = await new Promise<{
+        blob: Blob;
+        cloudinaryData: {
+          success: boolean;
+          url?: string;
+          image?: {
+            width: number;
+            height: number;
+            format: string;
+            size: number;
+          };
+        } | null;
+      }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const uploadProgress = Math.round((event.loaded / event.total) * 90);
+          setProgress(uploadProgress);
+          setProgressMessage(`Uploading image... ${uploadProgress}%`);
+        };
+        xhr.upload.onload = () => {
+          setProgress(90);
+          setProgressMessage(
+            generateLink
+              ? "Processing image and uploading to Cloudinary..."
+              : "Processing image...",
+          );
+        };
+        xhr.onload = () => {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              reject(new Error(errorData.error || "Failed to generate image."));
+            } catch {
+              reject(new Error("Failed to generate image."));
+            }
+            return;
+          }
+          const responseType = xhr.getResponseHeader("Content-Type") || "";
+          if (responseType.includes("application/json")) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve({
+                blob: new Blob(),
+                cloudinaryData: data,
+              });
+            } catch {
+              reject(new Error("Invalid server response."));
+            }
+            return;
+          }
+          const blob = xhr.response;
+          resolve({
+            blob,
+            cloudinaryData: null,
+          });
+        };
+        xhr.onerror = () => reject(new Error("Network error occurred."));
+        xhr.onabort = () => reject(new Error("Request was cancelled."));
+        xhr.responseType = "blob";
+        xhr.open("POST", "/api/generate-image");
+        xhr.send(formData);
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate image.");
+      setProgress(100);
+      setProgressMessage("Completed");
+      if (result.cloudinaryData) {
+        const data = result.cloudinaryData;
+        setShareUrl(data.url || "");
+        setGeneratedUrl(data.url || null);
+        toast.add({
+          type: "success",
+          title: "Image generated successfully",
+          description: "Your image has been generated and uploaded.",
+        });
+      } else {
+        const objectUrl = URL.createObjectURL(result.blob);
+        setGeneratedUrl(objectUrl);
+        toast.add({
+          type: "success",
+          title: "Image generated successfully",
+          description: "Your image is ready to download.",
+        });
       }
-
-      if (!data.url) {
-        throw new Error("Generated image URL was not returned.");
-      }
-
-      setGeneratedUrl(data.url);
-      setShareUrl(data.url);
     } catch (error) {
       console.error(error);
-
-      setError(error instanceof Error ? error.message : "Something went wrong.");
+      setError(
+        error instanceof Error ? error.message : "Something went wrong.",
+      );
+      toast.add({
+        type: "error",
+        title: "Error generating image",
+        description:
+          error instanceof Error ? error.message : "Something went wrong.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Copy share URL
-   */
   const handleCopy = async () => {
     if (!shareUrl) return;
-
     try {
       await navigator.clipboard.writeText(shareUrl);
-
       setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
-      setError("Could not copy the URL.");
+      toast.add({
+        type: "error",
+        title: "Error copying URL",
+        description: "Could not copy the URL to clipboard.",
+      });
     }
   };
 
-  /**
-   * Reset
-   */
-  const handleReset = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
+  const handleDownload = () => {
+    if (!generatedUrl) return;
+    const link = document.createElement("a");
+    link.href = generatedUrl;
+    link.download = `resized.${format}`;
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
+  const handleReset = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (generatedUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(generatedUrl);
+    }
     setFile(null);
     setPreviewUrl(null);
     setGeneratedUrl(null);
     setShareUrl("");
-
     setWidth("");
     setHeight("");
-
     setOriginalWidth(0);
     setOriginalHeight(0);
-
     setQuality(80);
     setFormat("webp");
-
+    setProgress(0);
+    setProgressMessage("");
     setError("");
     setIsDragging(false);
+    setGenerateLink(false);
   };
 
   return (
     <main className="container mx-auto flex min-h-screen flex-col border-x sm:flex-row">
-      {/* =====================================================
-          LEFT
-      ====================================================== */}
-
       <section className="flex-1 border-b px-5 py-8 sm:border-b-0 sm:border-r">
-        <form onSubmit={handleGenerateImage} className="mx-auto flex w-full max-w-xl flex-col">
-          {/* Upload */}
-
+        <form
+          onSubmit={handleGenerateImage}
+          className="mx-auto flex w-full max-w-xl flex-col"
+        >
           <label
             htmlFor="image"
             onDragOver={handleDragOver}
@@ -353,15 +381,22 @@ export default function Home() {
           >
             <div className="flex size-16 items-center justify-center border bg-background">
               {previewUrl ? (
-                <img src={previewUrl} alt="Selected image" className="size-16 object-cover" />
+                <img
+                  src={previewUrl}
+                  alt="Selected image"
+                  className="size-16 object-cover"
+                />
               ) : (
                 <UploadCloud
                   size={36}
-                  className={isDragging ? "text-primary" : "text-muted-foreground"}
+                  className={
+                    isDragging
+                      ? "text-primary"
+                      : "text-muted-foreground"
+                  }
                 />
               )}
             </div>
-
             <div>
               <p className="text-center font-medium">
                 {isDragging
@@ -370,14 +405,12 @@ export default function Home() {
                     ? "Image selected"
                     : "Upload an image"}
               </p>
-
               <p className="mt-1 text-center text-sm text-muted-foreground">
                 {previewUrl
                   ? `${originalWidth} × ${originalHeight}px`
                   : "Drag and drop or click to upload"}
               </p>
             </div>
-
             <input
               ref={fileInputRef}
               id="image"
@@ -388,50 +421,46 @@ export default function Home() {
               onChange={handleFileChange}
             />
           </label>
-
-          {/* Settings */}
-
           <FieldGroup className="mt-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="image-width">Width</FieldLabel>
-
                 <Input
                   id="image-width"
                   name="width"
                   type="number"
                   min={1}
                   value={width}
-                  onChange={(event) => handleWidthChange(event.target.value)}
+                  onChange={(event) =>
+                    handleWidthChange(event.target.value)
+                  }
                   placeholder="Width"
-                  disabled={!file}
+                  disabled={!file || loading}
                 />
               </Field>
-
               <Field>
                 <FieldLabel htmlFor="image-height">Height</FieldLabel>
-
                 <Input
                   id="image-height"
                   name="height"
                   type="number"
                   min={1}
                   value={height}
-                  onChange={(event) => handleHeightChange(event.target.value)}
+                  onChange={(event) =>
+                    handleHeightChange(event.target.value)
+                  }
                   placeholder="Height"
-                  disabled={!file}
+                  disabled={!file || loading}
                 />
               </Field>
             </div>
-
-            {/* Output format */}
-
             <Field>
               <FieldLabel htmlFor="image-format">Output format</FieldLabel>
-
               <Select
                 value={format}
-                onValueChange={(value) => setFormat(value as ImageFormat)}
+                onValueChange={(value) =>
+                  setFormat(value as ImageFormat)
+                }
                 disabled={!file || loading}
               >
                 <SelectTrigger>
@@ -445,65 +474,131 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </Field>
-
-            {/* Aspect ratio */}
-
+            <Field orientation="horizontal" className="max-w-sm">
+              <FieldContent>
+                <FieldLabel htmlFor="switch-focus-mode">
+                  Generate link
+                </FieldLabel>
+                <FieldDescription>
+                  This link will be generated and uploaded to Cloudinary,
+                  allowing you to share it with others.
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="switch-focus-mode"
+                checked={generateLink}
+                onCheckedChange={setGenerateLink}
+                disabled={loading}
+              />
+            </Field>
             <div className="flex items-center justify-between border-y py-3">
               <div>
-                <p className="text-sm font-medium">Lock aspect ratio</p>
-
-                <p className="text-xs text-muted-foreground">Keep the original image proportions</p>
+                <p className="text-sm font-medium">
+                  Lock aspect ratio
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Keep the original image proportions
+                </p>
               </div>
-
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
-                onClick={() => setLockAspectRatio((value) => !value)}
-                aria-label={lockAspectRatio ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                onClick={() =>
+                  setLockAspectRatio((value) => !value)
+                }
+                disabled={loading}
+                aria-label={
+                  lockAspectRatio
+                    ? "Unlock aspect ratio"
+                    : "Lock aspect ratio"
+                }
               >
-                {lockAspectRatio ? <Lock size={16} /> : <LockOpen size={16} />}
+                {lockAspectRatio ? (
+                  <Lock size={16} />
+                ) : (
+                  <LockOpen size={16} />
+                )}
               </Button>
             </div>
-
-            {/* Quality */}
-
             <Field>
               <div className="flex items-center justify-between">
-                <FieldLabel htmlFor="image-quality">Image quality</FieldLabel>
-
-                <span className="text-sm tabular-nums text-muted-foreground">{quality}%</span>
+                <FieldLabel htmlFor="image-quality">
+                  Image quality
+                </FieldLabel>
+                <span className="text-sm tabular-nums text-muted-foreground">
+                  {quality}%
+                </span>
               </div>
-
               <Slider
                 id="image-quality"
                 min={1}
                 max={100}
                 step={1}
                 value={[quality]}
+                disabled={!file || loading}
                 onValueChange={(value) => {
-                  const nextValue = Array.isArray(value) ? value[0] : value;
-
+                  const nextValue = Array.isArray(value)
+                    ? value[0]
+                    : value;
                   if (typeof nextValue === "number") {
                     setQuality(nextValue);
                   }
                 }}
               />
             </Field>
-
-            {/* Error */}
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            {/* Actions */}
-
+            {loading && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <Loader2
+                      size={15}
+                      className="animate-spin"
+                    />
+                    {progressMessage}
+                  </span>
+                  <span className="tabular-nums">
+                    {progress}%
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {error && (
+              <p className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2">
-              <Button type="submit" disabled={loading || !file} className="flex-1">
-                {loading ? "Generating..." : "Generate image"}
+              <Button
+                type="submit"
+                disabled={loading || !file}
+                className="flex-1"
+              >
+                {loading ? (
+                  <>
+                    <Loader2
+                      size={18}
+                      className="animate-spin"
+                    />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate image"
+                )}
               </Button>
-
               {file && (
-                <Button type="button" variant="outline" onClick={handleReset} disabled={loading}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleReset}
+                  disabled={loading}
+                >
                   Reset
                 </Button>
               )}
@@ -511,24 +606,13 @@ export default function Home() {
           </FieldGroup>
         </form>
       </section>
-
-      {/* =====================================================
-          RIGHT
-      ====================================================== */}
-
       <section className="flex-1 px-5 py-8">
         <div className="mx-auto flex w-full max-w-xl flex-col">
-          {/* Preview heading */}
-
           <h3 className="flex items-center gap-2 font-medium">
             <Eye size={18} />
             Preview
           </h3>
-
           <div className="my-3 h-px w-full bg-border" />
-
-          {/* Preview */}
-
           <div className="flex min-h-[320px] items-center justify-center border bg-muted/20 p-4">
             {generatedUrl ? (
               <img
@@ -543,63 +627,68 @@ export default function Home() {
                 className="max-h-[500px] max-w-full object-contain"
               />
             ) : (
-              <p className="text-sm text-muted-foreground">Your generated image will appear here</p>
+              <p className="text-sm text-muted-foreground">
+                Your generated image will appear here
+              </p>
             )}
           </div>
-
-          {/* Generated dimensions */}
-
           {generatedUrl && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Generated at {width} × {height}px · Quality {quality}% · Format {format.toUpperCase()}
+              Generated at {width} × {height}px · Quality{" "}
+              {quality}% · Format {format.toUpperCase()}
             </p>
           )}
-
-          {/* Download */}
-
           {generatedUrl ? (
-            <a
-              href={generatedUrl}
-              download
-              className="flex items-center gap-2"
-              aria-label="Download generated image"
-              target="_blank"
+            <Button
+              type="button"
+              className="mt-4 w-full"
+              onClick={handleDownload}
             >
-              <Button className="mt-4 w-full">
-                <ArrowDownToLine size={18} />
-                Download Generated Image
-              </Button>
-            </a>
+              <ArrowDownToLine size={18} />
+              Download Generated Image
+            </Button>
           ) : (
-            <Button className="mt-4 w-full" disabled>
+            <Button
+              type="button"
+              className="mt-4 w-full"
+              disabled
+            >
               <ArrowDownToLine size={18} />
               Download Generated Image
             </Button>
           )}
-
-          {/* Share */}
-
-          <div className="my-6 h-px w-full bg-border" />
-
-          <h3 className="mb-3 flex items-center gap-2 font-medium">
-            <LinkIcon size={18} />
-            Share Link
-          </h3>
-
-          <InputGroup>
-            <InputGroupInput value={shareUrl} placeholder="Generated image URL" readOnly />
-
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton
-                type="button"
-                onClick={handleCopy}
-                disabled={!shareUrl}
-                aria-label="Copy share link"
-              >
-                {copied ? <Check size={18} /> : <Copy size={18} />}
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
+          {generateLink && (
+            <>
+              <div className="my-6 h-px w-full bg-border" />
+              <div>
+                <h3 className="mb-3 flex items-center gap-2 font-medium">
+                  <LinkIcon size={18} />
+                  Share Link
+                </h3>
+                <InputGroup>
+                  <InputGroupInput
+                    value={shareUrl}
+                    placeholder="Generated image URL"
+                    readOnly
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      type="button"
+                      onClick={handleCopy}
+                      disabled={!shareUrl}
+                      aria-label="Copy share link"
+                    >
+                      {copied ? (
+                        <Check size={18} />
+                      ) : (
+                        <Copy size={18} />
+                      )}
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+              </div>
+            </>
+          )}
         </div>
       </section>
     </main>
